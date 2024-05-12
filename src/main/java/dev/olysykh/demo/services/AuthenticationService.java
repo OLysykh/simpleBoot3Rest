@@ -4,13 +4,16 @@ import dev.olysykh.demo.dto.RegistrationRequest;
 import dev.olysykh.demo.entities.Role;
 import dev.olysykh.demo.entities.Token;
 import dev.olysykh.demo.entities.User;
+import dev.olysykh.demo.enums.EmailTemplateName;
 import dev.olysykh.demo.repositories.RoleRepository;
 import dev.olysykh.demo.repositories.TokenRepository;
 import dev.olysykh.demo.repositories.UserRepository;
+import jakarta.mail.MessagingException;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -26,7 +29,13 @@ public class AuthenticationService {
 
     private final TokenRepository tokenRepository;
 
-    public void register(RegistrationRequest request) {
+    private final EmailService emailService;
+
+
+    @Value("${spring.application.mailing.frontend.activation-url}")
+    private String activationUrl;
+
+    public void register(RegistrationRequest request) throws MessagingException {
         Role userRole = roleRepository.findByName("USER")
             .orElseThrow(() -> new IllegalStateException("Role User hast not been initialized"));
 
@@ -45,8 +54,17 @@ public class AuthenticationService {
         sendValidationEmail(user);
     }
 
-    private void sendValidationEmail(User user) {
+    private void sendValidationEmail(User user) throws MessagingException {
         var newToken = generateAndSaveActivationToken(user);
+
+        emailService.sendEmail(
+            user.getEmail(),
+            user.getFullName(),
+            EmailTemplateName.ACTIVATE_ACCOUNT,
+            activationUrl,
+            newToken,
+            "Account activation"
+        );
     }
 
     private String generateAndSaveActivationToken(User user) {
@@ -61,8 +79,6 @@ public class AuthenticationService {
 
         tokenRepository.save(token);
         return generatedToken;
-
-
     }
 
     private String generateAndSaveActivationCode(int length) {

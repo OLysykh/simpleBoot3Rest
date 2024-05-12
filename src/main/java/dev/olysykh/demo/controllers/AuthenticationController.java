@@ -4,6 +4,7 @@ package dev.olysykh.demo.controllers;
 import dev.olysykh.demo.dto.RegistrationRequest;
 import dev.olysykh.demo.services.AuthenticationService;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.mail.MessagingException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -26,7 +27,7 @@ public class AuthenticationController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public ResponseEntity<?> register(
         @RequestBody @Valid RegistrationRequest request
-    ){
+    ) throws MessagingException {
         authenticationService.register(request);
         return ResponseEntity.accepted().build();
     }
