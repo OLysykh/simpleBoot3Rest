@@ -1,5 +1,7 @@
 package dev.olysykh.demo.services;
 
+import dev.olysykh.demo.dto.AuthenticationRequest;
+import dev.olysykh.demo.dto.AuthenticationResponse;
 import dev.olysykh.demo.dto.RegistrationRequest;
 import dev.olysykh.demo.entities.Role;
 import dev.olysykh.demo.entities.Token;
@@ -8,14 +10,19 @@ import dev.olysykh.demo.enums.EmailTemplateName;
 import dev.olysykh.demo.repositories.RoleRepository;
 import dev.olysykh.demo.repositories.TokenRepository;
 import dev.olysykh.demo.repositories.UserRepository;
+import dev.olysykh.demo.security.JwtService;
 import jakarta.mail.MessagingException;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +37,10 @@ public class AuthenticationService {
     private final TokenRepository tokenRepository;
 
     private final EmailService emailService;
+
+    private final AuthenticationManager authenticationManager;
+
+    private final JwtService jwtService;
 
 
     @Value("${spring.application.mailing.frontend.activation-url}")
@@ -93,5 +104,42 @@ public class AuthenticationService {
         }
 
         return codeBuilder.toString();
+    }
+
+    public AuthenticationResponse authenticate(AuthenticationRequest authenticationRequest) {
+        var auth = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(
+            authenticationRequest.getEmail(),
+            authenticationRequest.getPassword()
+        ));
+        var claims = new HashMap<String, Object>();
+        var user = (User) auth.getPrincipal();
+
+        claims.put("fullName", user.getFullName());
+        var jwtToken = jwtService.generateToken(claims, user);
+
+        return AuthenticationResponse.builder()
+            .token(jwtToken)
+            .build();
+    }
+
+
+//    @Transactional
+    public void activateAccount(String token) throws MessagingException {
+        var savedToken = tokenRepository.findByToken(token)
+            .orElseThrow(() -> new RuntimeException("Invalid Token!"));
+
+        if (LocalDateTime.now().isAfter(savedToken.getExpiresAt())) {
+            sendValidationEmail(savedToken.getUser());
+            throw new RuntimeException("Token has expired! please reactivate account via email again");
+        }
+
+        var user = userRepository.findById(savedToken.getUser().getId())
+            .orElseThrow(() -> new RuntimeException("there is no such User!"));
+
+        user.setEnabled(true);
+        userRepository.save(user);
+
+        savedToken.setValidatedAt(LocalDateTime.now());
+        tokenRepository.save(savedToken);
     }
 }
